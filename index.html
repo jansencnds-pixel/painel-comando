@@ -66,6 +66,16 @@
   #splash.hide{ animation: fadeout .35s ease forwards; pointer-events:none; }
   @keyframes fadeout{ to{ opacity:0; } }
 
+  #login{
+    position:fixed; inset:0; z-index:60; background:var(--bg);
+    align-items:center; justify-content:center; padding:24px;
+  }
+  .loginform{ width:100%; max-width:320px; text-align:center; }
+  .loginform .anchor{ display:flex; justify-content:center; margin-bottom:10px; }
+  .loginTitle{ font-family:'Fraunces',serif; font-weight:600; font-size:22px; color:var(--text); margin:0; }
+  .loginSub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim); margin-top:4px; }
+  .loginError{ color:var(--red); font-size:12px; margin-top:10px; font-family:'IBM Plex Mono',monospace; }
+
   header{
     flex-shrink:0; border-bottom:1px solid var(--border);
     padding:14px 20px 14px;
@@ -101,6 +111,13 @@
   .iconbtn{ background:none; border:none; padding:6px; flex-shrink:0; cursor:pointer; opacity:.7; }
   .iconbtn:active{ transform:scale(0.9); opacity:1; }
 
+  .editform{ padding:12px 0; display:flex; flex-direction:column; gap:8px; }
+  .editform .fldrow{ display:flex; flex-wrap:wrap; gap:8px; }
+  .editactions{ display:flex; gap:8px; justify-content:flex-end; }
+  .savebtn{ background:var(--green); color:var(--bg); border:none; border-radius:6px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px; }
+  .cancelbtn{ background:transparent; color:var(--dim); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:4px; }
+  .iconbtn:active{ transform:scale(0.9); opacity:1; }
+
   .card{ background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
   .cardhead{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
   .cardhead h2{ font-family:'Fraunces',serif; font-size:16px; font-weight:600; margin:0; }
@@ -118,6 +135,14 @@
     display:flex; align-items:center; gap:4px; flex-shrink:0;
   }
   .addbtn:active{ transform:scale(0.96); }
+
+  .voicebtn{
+    width:100%; background:linear-gradient(135deg, var(--brass), #B8934E); color:var(--bg);
+    border:none; border-radius:10px; padding:14px; margin-bottom:14px;
+    font-size:14px; font-weight:600; font-family:'Inter',sans-serif;
+    display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer;
+  }
+  .voicebtn:active{ transform:scale(0.98); }
 
   .task .row .title.done{ color:#5A6E77; text-decoration:line-through; }
   .prio{ font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.05em; flex-shrink:0; }
@@ -142,7 +167,89 @@
 </head>
 <body>
 <div id="splash" onclick="enterApp()"></div>
+<div id="login" style="display:none"></div>
 <div id="app"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB5z71rr25NrlUlnVNA-7fNTRGTgOpVbWA",
+  authDomain: "painel-comando.firebaseapp.com",
+  projectId: "painel-comando",
+  storageBucket: "painel-comando.firebasestorage.app",
+  messagingSenderId: "875373390236",
+  appId: "1:875373390236:web:d8bf7a86663fe598bbc059"
+};
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+let unsubscribeSnapshot = null;
+
+function docRef(uid){ return doc(db, 'users', uid, 'painel', 'state'); }
+
+function renderLogin(errorMsg){
+  document.getElementById('splash').style.display = 'none';
+  document.getElementById('app').innerHTML = '';
+  const loginEl = document.getElementById('login');
+  loginEl.style.display = 'flex';
+  loginEl.innerHTML = `
+    <form class="loginform" onsubmit="return false;">
+      <div class="anchor">${window.icon ? window.icon('anchor','#C9A05C',28) : ''}</div>
+      <p class="loginTitle">Painel de Comando</p>
+      <p class="loginSub">Entre com sua conta</p>
+      <input class="fld" id="login-email" type="email" placeholder="E-mail" autocomplete="username" style="width:100%;margin-top:18px">
+      <input class="fld" id="login-pass" type="password" placeholder="Senha" autocomplete="current-password" style="width:100%;margin-top:10px">
+      ${errorMsg ? `<p class="loginError">${errorMsg}</p>` : ''}
+      <button class="addbtn" id="login-submit" style="width:100%;justify-content:center;margin-top:14px">Entrar</button>
+    </form>
+  `;
+  document.getElementById('login-submit').onclick = async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    if (!email || !pass) return;
+    try{
+      await signInWithEmailAndPassword(auth, email, pass);
+    }catch(e){
+      renderLogin('E-mail ou senha incorretos.');
+    }
+  };
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+  if (!user){
+    renderLogin();
+    return;
+  }
+  document.getElementById('login').style.display = 'none';
+  window.__uid = user.uid;
+  window.__bootApp();
+  unsubscribeSnapshot = onSnapshot(docRef(user.uid), (snap) => {
+    if (snap.exists()){
+      window.__applyRemoteData(snap.data());
+    } else {
+      window.__initRemoteData();
+    }
+  }, (err) => {
+    console.error('sync error', err);
+  });
+});
+
+window.__firestoreSave = async (data) => {
+  if (!window.__uid) return;
+  try{ await setDoc(docRef(window.__uid), data); }
+  catch(e){ console.error('firestore save failed', e); }
+};
+window.__firestoreInitIfEmpty = async (seedData) => {
+  if (!window.__uid) return;
+  const ref = docRef(window.__uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()){ await setDoc(ref, seedData); }
+};
+</script>
 
 <script>
 const STORAGE_KEY = 'painel-comando-data-v1';
@@ -175,6 +282,10 @@ function fmtDateTime(iso){
 function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 const ICONS = {
+  speaker: `<path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 9a5 5 0 0 1 0 6"/><path d="M19 6.5a9 9 0 0 1 0 11"/>`,
+  stop: `<rect x="6" y="6" width="12" height="12" rx="1.5"/>`,
+  download: `<path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 19h16"/>`,
+  upload: `<path d="M12 21V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/><path d="M4 5h16"/>`,
   anchor: `<circle cx="12" cy="5" r="2.5"/><line x1="12" y1="7.5" x2="12" y2="21"/><path d="M5 13c0 4 3 7 7 8 4-1 7-4 7-8"/><line x1="7" y1="10" x2="17" y2="10"/>`,
   bell: `<path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 6 2 6.5H4C4.5 14 6 12 6 8z"/><path d="M9.5 17.5a2.5 2.5 0 0 0 5 0"/>`,
   bellRing: `<path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 6 2 6.5H4C4.5 14 6 12 6 8z"/><path d="M9.5 17.5a2.5 2.5 0 0 0 5 0"/><path d="M3 6l-1.5-1.5"/><path d="M21 6l1.5-1.5"/>`,
@@ -185,6 +296,8 @@ const ICONS = {
   trash: `<polyline points="4,7 20,7"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>`,
   check: `<circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9"/>`,
   circle: `<circle cx="12" cy="12" r="9"/>`,
+  edit: `<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>`,
+  x: `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`,
 };
 function icon(name, color, size){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="${color||'currentColor'}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="width:${size||18}px;height:${size||18}px">${ICONS[name]}</svg>`;
@@ -201,36 +314,48 @@ const seedTasks = [
   { id: uid(), text:'Registrar ocorrência do certificado vencido no diário de bordo', done:true, priority:'media' },
 ];
 
-let state = { tab:'reminders', data:null };
+let state = { tab:'reminders', data:null, editing:null };
 
-async function loadData(){
-  try{
-    if (window.storage){
-      const res = await window.storage.get(STORAGE_KEY, false);
-      if (res && res.value) return JSON.parse(res.value);
-    } else {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    }
-  }catch(e){
-    try{ const raw = localStorage.getItem(STORAGE_KEY); if (raw) return JSON.parse(raw); }catch(e2){}
-  }
-  return { certs:seedCerts, tasks:seedTasks, logs:[], reminders:[] };
-}
 async function saveData(){
-  try{
-    if (window.storage){
-      await window.storage.set(STORAGE_KEY, JSON.stringify(state.data), false);
-    } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
-    }
-  }catch(e){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }
-    catch(e2){ console.error('save failed', e2); }
-  }
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }catch(e){}
+  if (window.__firestoreSave){ await window.__firestoreSave(state.data); }
 }
 
-function setTab(tab){ state.tab = tab; render(); }
+window.__applyRemoteData = (data) => {
+  state.data = {
+    certs: Array.isArray(data.certs) ? data.certs : [],
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    logs: Array.isArray(data.logs) ? data.logs : [],
+    reminders: Array.isArray(data.reminders) ? data.reminders : [],
+  };
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }catch(e){}
+  render();
+};
+
+window.__initRemoteData = () => {
+  state.data = { certs: seedCerts, tasks: seedTasks, logs: [], reminders: [] };
+  if (window.__firestoreSave) window.__firestoreSave(state.data);
+  render();
+};
+
+window.__bootApp = () => {
+  const splash = document.getElementById('splash');
+  splash.style.display = '';
+  splash.classList.remove('hide');
+  splash.style.backgroundImage = `url('${SHIP_IMG}')`;
+  splash.innerHTML = `
+    <div class="splashcontent">
+      <div class="anchor">${icon('anchor', '#C9A05C', 30)}</div>
+      <p class="shipname">Siem Pilot</p>
+      <p class="shiptag">DOF · Painel de Comando</p>
+      <p class="enterhint">Toque para entrar</p>
+    </div>
+  `;
+  document.getElementById('app').innerHTML = `<div style="height:100dvh;display:flex;align-items:center;justify-content:center;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:13px">Sincronizando...</div>`;
+};
+
+
+function setTab(tab){ state.tab = tab; state.editing = null; render(); }
 window.setTab = setTab;
 
 function alertCount(){
@@ -244,7 +369,12 @@ function render(){
   app.innerHTML = `
     <header>
       <h1>${titles[state.tab]}</h1>
-      ${ac > 0 ? `<span class="badge"><span class="dot"></span>${ac} ativo${ac!==1?'s':''}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:2px">
+        ${ac > 0 ? `<span class="badge" style="margin-right:8px"><span class="dot"></span>${ac} ativo${ac!==1?'s':''}</span>` : ''}
+        <button class="iconbtn" onclick="exportData()" aria-label="Exportar dados">${icon('download','var(--dim)',17)}</button>
+        <button class="iconbtn" onclick="document.getElementById('import-file').click()" aria-label="Importar dados">${icon('upload','var(--dim)',17)}</button>
+        <input type="file" id="import-file" accept="application/json" style="display:none" onchange="importData(event)">
+      </div>
     </header>
     <main><div class="maxw">${renderTab()}</div></main>
     <nav class="tabbar">
@@ -272,11 +402,70 @@ function renderTab(){
   return renderLogs();
 }
 
+function isSameDay(iso, ref){
+  const d = new Date(iso);
+  return d.getFullYear()===ref.getFullYear() && d.getMonth()===ref.getMonth() && d.getDate()===ref.getDate();
+}
+
+function buildAgendaText(){
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' });
+  const parts = [`Bom serviço, Comandante. Hoje é ${dateStr}.`];
+
+  const remindersToday = state.data.reminders
+    .filter(r => isSameDay(r.when, now))
+    .sort((a,b)=> new Date(a.when)-new Date(b.when));
+  const overdue = state.data.reminders.filter(r => reminderStatus(r.when).key === 'overdue');
+
+  if (overdue.length){
+    const list = overdue.map(r => r.title).join(', ');
+    parts.push(`Atenção: ${overdue.length} lembrete${overdue.length!==1?'s':''} atrasado${overdue.length!==1?'s':''}: ${list}.`);
+  }
+  if (remindersToday.length){
+    const list = remindersToday.map(r => {
+      const t = new Date(r.when).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+      return `${r.title} às ${t}`;
+    }).join('; ');
+    parts.push(`Você tem ${remindersToday.length} compromisso${remindersToday.length!==1?'s':''} hoje: ${list}.`);
+  } else if (!overdue.length){
+    parts.push('Nenhum lembrete marcado para hoje.');
+  }
+
+  const highTasks = state.data.tasks.filter(t => !t.done && t.priority === 'alta');
+  if (highTasks.length){
+    const list = highTasks.map(t => t.text).join('; ');
+    parts.push(`Ações de alta prioridade pendentes: ${list}.`);
+  }
+
+  const certsAlert = state.data.certs.filter(c => daysUntil(c.expiry) <= 30);
+  if (certsAlert.length){
+    const list = certsAlert.map(c => {
+      const d = daysUntil(c.expiry);
+      return d < 0 ? `${c.name}, vencido` : `${c.name}, vence em ${d} dias`;
+    }).join('; ');
+    parts.push(`Atenção aos certificados: ${list}.`);
+  }
+
+  return parts.join(' ');
+}
+
 function renderReminders(){
   const list = [...state.data.reminders].sort((a,b)=> new Date(a.when)-new Date(b.when));
   const rows = list.length === 0
     ? `<p class="empty">Nenhum lembrete cadastrado.</p>`
     : list.map(r => {
+        if (state.editing && state.editing.type==='reminder' && state.editing.id===r.id){
+          return `<div class="editform">
+            <div class="fldrow">
+              <input class="fld" id="edit-rem-title" value="${esc(r.title)}" style="flex:1;min-width:160px">
+              <input class="fld" id="edit-rem-when" type="datetime-local" value="${r.when}">
+            </div>
+            <div class="editactions">
+              <button class="cancelbtn" onclick="cancelEdit()">${icon('x','var(--dim)',13)} Cancelar</button>
+              <button class="savebtn" onclick="saveReminderEdit('${r.id}')">${icon('check','var(--bg)',13)} Salvar</button>
+            </div>
+          </div>`;
+        }
         const s = reminderStatus(r.when);
         const alert = s.key==='overdue' || s.key==='soon';
         return `<div class="row ${alert?'alertrow':''}">
@@ -286,10 +475,16 @@ function renderReminders(){
             <div class="sub">${fmtDateTime(r.when)}</div>
           </div>
           <span class="status" style="color:${s.color}">${s.label}</span>
+          <button class="iconbtn" onclick="startEdit('reminder','${r.id}')">${icon('edit','var(--dim)',14)}</button>
           <button class="iconbtn" onclick="deleteReminder('${r.id}')">${icon('trash','var(--red)',14)}</button>
         </div>`;
       }).join('');
-  return `<div class="card">
+  const speaking = window.speechSynthesis && window.speechSynthesis.speaking;
+  return `<button class="voicebtn" onclick="toggleAgendaSpeech()">
+      ${icon(speaking?'stop':'speaker', 'var(--bg)', 16)}
+      <span>${speaking ? 'Parar' : 'Ouvir agenda de hoje'}</span>
+    </button>
+    <div class="card">
     ${rows}
     <form class="addform" onsubmit="addReminder(event)">
       <input class="fld" id="rem-title" placeholder="Reunião ou tarefa importante" style="flex:1;min-width:160px">
@@ -304,6 +499,18 @@ function renderCerts(){
   const rows = list.length === 0
     ? `<p class="empty">Nenhum certificado cadastrado.</p>`
     : list.map(c => {
+        if (state.editing && state.editing.type==='cert' && state.editing.id===c.id){
+          return `<div class="editform">
+            <div class="fldrow">
+              <input class="fld" id="edit-cert-name" value="${esc(c.name)}" style="flex:1;min-width:140px">
+              <input class="fld" id="edit-cert-issuer" value="${esc(c.issuer)}" style="flex:1;min-width:120px">
+            </div>
+            <div class="editactions">
+              <button class="cancelbtn" onclick="cancelEdit()">${icon('x','var(--dim)',13)} Cancelar</button>
+              <button class="savebtn" onclick="saveCertEdit('${c.id}')">${icon('check','var(--bg)',13)} Salvar</button>
+            </div>
+          </div>`;
+        }
         const s = certStatus(c.expiry);
         return `<div class="row">
           <span class="dotstatus" style="background:${s.color}"></span>
@@ -315,6 +522,7 @@ function renderCerts(){
             <div class="status" style="color:${s.color}">${s.label}</div>
             <input class="datebtn" type="date" value="${c.expiry}" onchange="updateCertDate('${c.id}', this.value)">
           </div>
+          <button class="iconbtn" onclick="startEdit('cert','${c.id}')">${icon('edit','var(--dim)',14)}</button>
           <button class="iconbtn" onclick="deleteCert('${c.id}')">${icon('trash','var(--red)',14)}</button>
         </div>`;
       }).join('');
@@ -335,12 +543,31 @@ function renderTasks(){
   const pColor = { alta:'var(--red)', media:'var(--amber)', baixa:'var(--dim)' };
   const rows = list.length === 0
     ? `<p class="empty">Nenhuma ação cadastrada.</p>`
-    : list.map(t => `<div class="row">
+    : list.map(t => {
+        if (state.editing && state.editing.type==='task' && state.editing.id===t.id){
+          return `<div class="editform">
+            <div class="fldrow">
+              <input class="fld" id="edit-task-text" value="${esc(t.text)}" style="flex:1;min-width:160px">
+              <select class="fld" id="edit-task-priority" style="flex:0 0 auto">
+                <option value="alta" ${t.priority==='alta'?'selected':''}>Alta</option>
+                <option value="media" ${t.priority==='media'?'selected':''}>Média</option>
+                <option value="baixa" ${t.priority==='baixa'?'selected':''}>Baixa</option>
+              </select>
+            </div>
+            <div class="editactions">
+              <button class="cancelbtn" onclick="cancelEdit()">${icon('x','var(--dim)',13)} Cancelar</button>
+              <button class="savebtn" onclick="saveTaskEdit('${t.id}')">${icon('check','var(--bg)',13)} Salvar</button>
+            </div>
+          </div>`;
+        }
+        return `<div class="row">
         <button class="iconbtn" onclick="toggleTask('${t.id}')">${icon(t.done?'check':'circle', t.done?'var(--green)':'var(--dim)', 18)}</button>
         <div class="title ${t.done?'done':''}" style="flex:1">${esc(t.text)}</div>
         <span class="prio" style="color:${pColor[t.priority]}">${t.priority}</span>
+        <button class="iconbtn" onclick="startEdit('task','${t.id}')">${icon('edit','var(--dim)',14)}</button>
         <button class="iconbtn" onclick="deleteTask('${t.id}')">${icon('trash','var(--red)',14)}</button>
-      </div>`).join('');
+      </div>`;
+      }).join('');
   return `<div class="card">
     ${rows}
     <form class="addform" onsubmit="addTask(event)">
@@ -359,11 +586,23 @@ function renderLogs(){
   const list = [...state.data.logs].reverse();
   const rows = list.length === 0
     ? `<p class="empty">Nenhum registro ainda.</p>`
-    : list.map(l => `<div class="row">
+    : list.map(l => {
+        if (state.editing && state.editing.type==='log' && state.editing.id===l.id){
+          return `<div class="editform">
+            <textarea class="fld" id="edit-log-text" style="width:100%;min-height:70px;resize:vertical;font-family:'Inter',sans-serif">${esc(l.text)}</textarea>
+            <div class="editactions">
+              <button class="cancelbtn" onclick="cancelEdit()">${icon('x','var(--dim)',13)} Cancelar</button>
+              <button class="savebtn" onclick="saveLogEdit('${l.id}')">${icon('check','var(--bg)',13)} Salvar</button>
+            </div>
+          </div>`;
+        }
+        return `<div class="row">
         <span class="sub" style="flex-shrink:0;padding-top:2px">${fmtDateTime(l.ts)}</span>
         <div class="title" style="flex:1;white-space:normal">${esc(l.text)}</div>
+        <button class="iconbtn" onclick="startEdit('log','${l.id}')">${icon('edit','var(--dim)',13)}</button>
         <button class="iconbtn" onclick="deleteLog('${l.id}')">${icon('trash','var(--red)',13)}</button>
-      </div>`).join('');
+      </div>`;
+      }).join('');
   return `<div class="card">
     <form class="addform" onsubmit="addLog(event)" style="margin-bottom:4px">
       <input class="fld" id="log-text" placeholder="Registrar nota no log..." style="flex:1">
@@ -374,6 +613,93 @@ function renderLogs(){
 }
 
 function bindHandlers(){
+  window.toggleAgendaSpeech = () => {
+    if (!('speechSynthesis' in window)){
+      alert('Seu navegador não suporta leitura por voz.');
+      return;
+    }
+    if (window.speechSynthesis.speaking){
+      window.speechSynthesis.cancel();
+      render();
+      return;
+    }
+    const utter = new SpeechSynthesisUtterance(buildAgendaText());
+    utter.lang = 'pt-BR';
+    utter.rate = 0.98;
+    utter.onend = () => render();
+    utter.onerror = () => render();
+    window.speechSynthesis.speak(utter);
+    render();
+  };
+
+  window.exportData = () => {
+    const blob = new Blob([JSON.stringify(state.data, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `painel-comando-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  window.importData = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== 'object') throw new Error('formato inválido');
+        state.data = {
+          certs: Array.isArray(parsed.certs) ? parsed.certs : [],
+          tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+          logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+          reminders: Array.isArray(parsed.reminders) ? parsed.reminders : [],
+        };
+        saveData();
+        state.editing = null;
+        render();
+      }catch(e){
+        alert('Não foi possível importar esse arquivo. Verifique se é um backup válido do Painel de Comando.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  window.startEdit = (type, id) => { state.editing = { type, id }; render(); };
+  window.cancelEdit = () => { state.editing = null; render(); };
+
+  window.saveReminderEdit = (id) => {
+    const r = state.data.reminders.find(r=>r.id===id);
+    const title = document.getElementById('edit-rem-title').value.trim();
+    const when = document.getElementById('edit-rem-when').value;
+    if (r && title && when){ r.title = title; r.when = when; }
+    state.editing = null; saveData(); render();
+  };
+  window.saveCertEdit = (id) => {
+    const c = state.data.certs.find(c=>c.id===id);
+    const name = document.getElementById('edit-cert-name').value.trim();
+    const issuer = document.getElementById('edit-cert-issuer').value.trim();
+    if (c && name){ c.name = name; c.issuer = issuer; }
+    state.editing = null; saveData(); render();
+  };
+  window.saveTaskEdit = (id) => {
+    const t = state.data.tasks.find(t=>t.id===id);
+    const text = document.getElementById('edit-task-text').value.trim();
+    const priority = document.getElementById('edit-task-priority').value;
+    if (t && text){ t.text = text; t.priority = priority; }
+    state.editing = null; saveData(); render();
+  };
+  window.saveLogEdit = (id) => {
+    const l = state.data.logs.find(l=>l.id===id);
+    const text = document.getElementById('edit-log-text').value.trim();
+    if (l && text){ l.text = text; }
+    state.editing = null; saveData(); render();
+  };
+
   window.addReminder = (e) => {
     e.preventDefault();
     const title = document.getElementById('rem-title').value.trim();
@@ -428,18 +754,7 @@ window.enterApp = enterApp;
 
 (async function init(){
   const splash = document.getElementById('splash');
-  splash.style.backgroundImage = `url('${SHIP_IMG}')`;
-  splash.innerHTML = `
-    <div class="splashcontent">
-      <div class="anchor">${icon('anchor', '#C9A05C', 30)}</div>
-      <p class="shipname">Siem Pilot</p>
-      <p class="shiptag">DOF · Painel de Comando</p>
-      <p class="enterhint">Toque para entrar</p>
-    </div>
-  `;
-  document.getElementById('app').innerHTML = `<div style="height:100dvh;display:flex;align-items:center;justify-content:center;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:13px">Carregando painel...</div>`;
-  state.data = await loadData();
-  render();
+  splash.style.display = 'none';
 })();
 </script>
 </body>
