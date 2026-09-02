@@ -360,6 +360,21 @@ async function saveData(){
   if (window.__firestoreSave){ await window.__firestoreSave(state.data); }
 }
 
+function bumpRecurringReminders(data){
+  let changed = false;
+  data.reminders = data.reminders.map(r => {
+    if (!r.repeatDays || !(r.repeatDays > 0)) return r;
+    let when = new Date(r.when);
+    const now = new Date();
+    if (when >= now) return r;
+    const stepMs = r.repeatDays * 86400000;
+    while (when < now){ when = new Date(when.getTime() + stepMs); }
+    changed = true;
+    return { ...r, id: uid(), when: when.toISOString() };
+  });
+  return changed;
+}
+
 window.__applyRemoteData = (data) => {
   state.data = {
     certs: Array.isArray(data.certs) ? data.certs : [],
@@ -368,6 +383,7 @@ window.__applyRemoteData = (data) => {
     reminders: Array.isArray(data.reminders) ? data.reminders : [],
   };
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }catch(e){}
+  if (bumpRecurringReminders(state.data)){ saveData(); }
   render();
 };
 
@@ -501,6 +517,7 @@ function renderReminders(){
             <div class="fldrow">
               <input class="fld" id="edit-rem-title" value="${esc(r.title)}" style="flex:1;min-width:160px">
               <input class="fld" id="edit-rem-when" type="datetime-local" value="${r.when}">
+              <input class="fld" id="edit-rem-repeat" type="number" min="0" placeholder="Repetir a cada (dias)" value="${r.repeatDays || ''}" style="flex:0 0 160px">
             </div>
             <div class="editactions">
               <button class="cancelbtn" onclick="cancelEdit()">${icon('x','var(--dim)',13)} Cancelar</button>
@@ -514,7 +531,7 @@ function renderReminders(){
           ${icon(alert?'bellRing':'bell', alert?s.color:'var(--dim)')}
           <div style="flex:1;min-width:0">
             <div class="title">${esc(r.title)}</div>
-            <div class="sub">${fmtDateTime(r.when)}</div>
+            <div class="sub">${fmtDateTime(r.when)}${r.repeatDays ? ` · repete a cada ${r.repeatDays}d` : ''}</div>
           </div>
           <span class="status" style="color:${s.color}">${s.label}</span>
           <button class="iconbtn" onclick="startEdit('reminder','${r.id}')">${icon('edit','var(--dim)',14)}</button>
@@ -531,6 +548,7 @@ function renderReminders(){
     <form class="addform" onsubmit="addReminder(event)">
       <input class="fld" id="rem-title" placeholder="Reunião ou tarefa importante" style="flex:1;min-width:160px">
       <input class="fld" id="rem-when" type="datetime-local">
+      <input class="fld" id="rem-repeat" type="number" min="0" placeholder="Repetir a cada (dias) — opcional" style="flex:0 0 200px">
       <button class="addbtn" type="submit">${icon('plus','var(--bg)',14)} Adicionar</button>
     </form>
   </div>`;
@@ -734,7 +752,12 @@ function bindHandlers(){
     const r = state.data.reminders.find(r=>r.id===id);
     const title = document.getElementById('edit-rem-title').value.trim();
     const when = document.getElementById('edit-rem-when').value;
-    if (r && title && when){ r.title = title; r.when = when; }
+    const repeatVal = document.getElementById('edit-rem-repeat').value;
+    const repeatDays = repeatVal ? parseInt(repeatVal, 10) : 0;
+    if (r && title && when){
+      r.title = title; r.when = when;
+      if (repeatDays > 0) r.repeatDays = repeatDays; else delete r.repeatDays;
+    }
     state.editing = null; saveData(); render();
   };
   window.saveCertEdit = (id) => {
@@ -799,8 +822,12 @@ function bindHandlers(){
     e.preventDefault();
     const title = document.getElementById('rem-title').value.trim();
     const when = document.getElementById('rem-when').value;
+    const repeatVal = document.getElementById('rem-repeat').value;
+    const repeatDays = repeatVal ? parseInt(repeatVal, 10) : 0;
     if (!title || !when) return;
-    state.data.reminders.push({ id: uid(), title, when });
+    const newRem = { id: uid(), title, when };
+    if (repeatDays > 0) newRem.repeatDays = repeatDays;
+    state.data.reminders.push(newRem);
     saveData(); render();
   };
   window.deleteReminder = (id) => { state.data.reminders = state.data.reminders.filter(r=>r.id!==id); saveData(); render(); };
