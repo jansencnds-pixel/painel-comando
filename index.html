@@ -539,7 +539,11 @@ function renderReminders(){
         </div>`;
       }).join('');
   const speaking = window.speechSynthesis && window.speechSynthesis.speaking;
-  return `<button class="voicebtn" onclick="toggleAgendaSpeech()">
+  return `
+    <div style="margin-bottom:10px">
+      <select id="voice-select" class="fld" style="width:100%" onchange="setVoicePreference(this.value)"></select>
+    </div>
+    <button class="voicebtn" onclick="toggleAgendaSpeech()">
       ${icon(speaking?'stop':'speaker', 'var(--bg)', 16)}
       <span>${speaking ? 'Parar' : 'Ouvir agenda de hoje'}</span>
     </button>
@@ -689,6 +693,36 @@ function renderLogs(){
 }
 
 function bindHandlers(){
+  const VOICE_PREF_KEY = 'painel-voice-name';
+  window.setVoicePreference = (name) => {
+    try{ localStorage.setItem(VOICE_PREF_KEY, name); }catch(e){}
+  };
+  window.getPreferredVoice = () => {
+    if (!('speechSynthesis' in window)) return null;
+    const voices = window.speechSynthesis.getVoices();
+    let saved = null;
+    try{ saved = localStorage.getItem(VOICE_PREF_KEY); }catch(e){}
+    if (saved){
+      const found = voices.find(v => v.name === saved);
+      if (found) return found;
+    }
+    return voices.find(v => v.lang && v.lang.toLowerCase().startsWith('pt')) || voices[0] || null;
+  };
+  window.populateVoiceSelect = () => {
+    const sel = document.getElementById('voice-select');
+    if (!sel || !('speechSynthesis' in window)) return;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return;
+    const ptVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('pt'));
+    const list = ptVoices.length ? ptVoices : voices;
+    let saved = null;
+    try{ saved = localStorage.getItem(VOICE_PREF_KEY); }catch(e){}
+    sel.innerHTML = list.map(v =>
+      `<option value="${esc(v.name)}" ${v.name===saved?'selected':''}>${esc(v.name)} (${esc(v.lang)})</option>`
+    ).join('');
+    if (!saved && list[0]){ window.setVoicePreference(list[0].name); }
+  };
+
   window.toggleAgendaSpeech = () => {
     if (!('speechSynthesis' in window)){
       alert('Seu navegador não suporta leitura por voz.');
@@ -700,13 +734,17 @@ function bindHandlers(){
       return;
     }
     const utter = new SpeechSynthesisUtterance(buildAgendaText());
-    utter.lang = 'pt-BR';
+    const chosen = window.getPreferredVoice();
+    if (chosen){ utter.voice = chosen; utter.lang = chosen.lang; }
+    else { utter.lang = 'pt-BR'; }
     utter.rate = 0.98;
     utter.onend = () => render();
     utter.onerror = () => render();
     window.speechSynthesis.speak(utter);
     render();
   };
+
+  window.populateVoiceSelect();
 
   window.exportData = () => {
     const blob = new Blob([JSON.stringify(state.data, null, 2)], { type:'application/json' });
@@ -865,6 +903,12 @@ function bindHandlers(){
     saveData(); render();
   };
   window.deleteLog = (id) => { state.data.logs = state.data.logs.filter(l=>l.id!==id); saveData(); render(); };
+}
+
+if ('speechSynthesis' in window){
+  window.speechSynthesis.onvoiceschanged = () => {
+    if (typeof window.populateVoiceSelect === 'function') window.populateVoiceSelect();
+  };
 }
 
 function enterApp(){
