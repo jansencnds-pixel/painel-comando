@@ -1,0 +1,33 @@
+name: Radar - atualizar preços
+
+on:
+  schedule:
+    - cron: '45 21 * * 1-5'   # 18h45 em Brasília, dias úteis
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/radar-precos.yml'
+      - 'radar-precos/atualizar.mjs'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-precos
+
+jobs:
+  precos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Buscar cotações
+        run: node radar-precos/atualizar.mjs
+      - name: Gravar se mudou
+        run: |
+          git config user.name "radar-precos[bot]"
+          git config user.email "radar-precos@users.noreply.github.com"
+          git add radar-precos/precos.json
+          git diff --cached --quiet || (git commit -m "precos: atualização automática" && git pull --rebase && git push)
