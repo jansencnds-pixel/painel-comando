@@ -55,3 +55,4 @@ writeFileSync(FILE, JSON.stringify({
   prices,
 }, null, 1) + '\n');
 // execução manual 2026-10-30T13:56:25Z
+// execução manual 2026-10-30T15:45:54Z
